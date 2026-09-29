@@ -377,9 +377,9 @@ statelessness, what broke first, what you'd change with more time.)*
 | Field | Your details |
 |---|---|
 | Full name | Nana Owusu Achiaw Prempeh |
-| Student ID | *(fill in)* |
+| Student ID | 2000250074 |
 | Programme | MSc Data Science and Analytics |
 | Course code | STD701 |
 | Assignment | Assignment 1 |
-| Repository URL | *(fill in)* |
-| Date submitted | *(fill in)* |
+| Repository URL | https://github.com/steveprempeh23/devmentor |
+| Date submitted | 29-09-2026 |
