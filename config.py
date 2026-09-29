@@ -20,15 +20,20 @@ APP_TAGLINE = "your local programming assistant"
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 # Default model used if the user does not pick one at startup (Bonus 1).
-DEFAULT_MODEL = os.environ.get("DEVMENTOR_MODEL", "llama3.2")
+# IMPORTANT: Ollama model names include the tag (the part after the colon)
+# and matching is exact - `ollama.chat(model="llama3.2")` looks for
+# "llama3.2:latest" specifically, which 404s if you only pulled a
+# different tag (e.g. "llama3.2:1b"). Run `ollama list` and use whatever
+# it actually prints.
+DEFAULT_MODEL = os.environ.get("DEVMENTOR_MODEL", "llama3.2:1b")
 
-# Models offered in the startup picker. Edit this list to match whatever
-# you've actually pulled locally (`ollama list`).
+# Fallback list offered in the startup picker if `ollama.list()` can't be
+# reached. Edit this to match whatever you've actually pulled locally.
+# main.py prefers querying Ollama directly (get_installed_models()) so
+# this list only matters as a last resort.
 AVAILABLE_MODELS = [
-    "llama3.2",
-    "qwen2.5",
-    "mistral",
-    "gemma2",
+    "llama3.2:1b",
+    "qwen2.5:1.5b",
 ]
 
 # --- Conversation controls --------------------------------------------

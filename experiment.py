@@ -14,12 +14,19 @@ Usage:
     python experiment.py
 """
 
+import sys
 import json
 import datetime
 
 import ollama
 import config
 import prompts
+
+# Windows terminals can choke on non-ASCII characters small local models
+# sometimes produce (em-dashes, math symbols, etc). Without this, such a
+# character can crash the whole script mid-run with UnicodeEncodeError -
+# this is exactly what happened partway through Prompt B during testing.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def run_prompt(system_prompt: str, question: str, model: str) -> str:

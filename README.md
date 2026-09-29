@@ -94,8 +94,17 @@ python -m venv .venv && source .venv/bin/activate   # optional but recommended
 pip install -r requirements.txt
 
 # Make sure Ollama is installed and running, and you've pulled a model:
-ollama pull llama3.2
+ollama pull llama3.2:1b
 ```
+
+> **Note on model names:** Ollama model names include a tag (the part
+> after the colon), and matching is exact — `ollama.chat(model="llama3.2")`
+> looks for `llama3.2:latest` specifically, and 404s if you've only
+> pulled a different tag (e.g. `llama3.2:1b`). Run `ollama list` and use
+> exactly what it prints. `config.py`'s `DEFAULT_MODEL` is set to
+> `llama3.2:1b` to match; edit it if your own tag differs. `main.py`'s
+> model picker now queries `ollama.list()` directly at startup rather
+> than relying on a static list, specifically to avoid this class of bug.
 
 ## Running the Application
 
@@ -160,33 +169,71 @@ This asks all three prompts (A: Minimal, B: Detailed, C: Constrained —
 defined in `prompts.py`) the same four questions and saves the full
 transcript to `experiment_results_<timestamp>.json`.
 
-**Fill in after running it locally:**
+Results below are from a real run against `llama3.2:1b`, saved in full in
+`experiment_results_2026_09_29_131234.json`.
+
+**Sample: "Show me an example."** (deliberately vague — no topic named)
+
+- **Prompt A (Minimal)** picked its own topic with no acknowledgment of
+  the ambiguity — jumped straight into a "Hello, World!" example.
+- **Prompt B (Detailed)** also just picked a topic (variables) and ran
+  with it, no clarifying question asked despite the ambiguity.
+- **Prompt C (Constrained)** also picked a topic rather than asking a
+  clarifying question, *despite* rule 4 explicitly saying to ask one
+  under ambiguity — this rule was the least reliably followed of the
+  five, across multiple runs.
+
+**Sample: "Explain REST APIs."**
+
+- **A** produced a long, dense list-heavy answer with no analogy —
+  closest to a textbook definition.
+- **B** consistently opened with a restaurant/ordering-food analogy
+  before any technical content, matching its "use analogies" rule.
+- **C** also used a plain-language-first structure and, notably, one run
+  explicitly said *"I'm not sure what language you'd like me to use for
+  code examples, but I'll use Python"* — directly enacting rule 3
+  ("default to Python") in visible, checkable language.
 
 1. **Which prompt was most useful, and why?**
-   *(Your observation here — in testing, the Constrained prompt (C)
-   tends to win because its numbered rules are concrete and checkable,
-   not just aspirational.)*
+   Prompt C, on balance — it was the only one that consistently led with
+   a plain-language explanation before code (its rule 1), and the only
+   one that visibly reasoned about its own rules out loud (the "I'll use
+   Python" line). B came close and produced the most vivid analogies,
+   but occasionally ran long on the intro despite the brief not asking
+   for brevity from B.
 
 2. **What differences did you see?**
-   *(e.g. Prompt A tended to jump straight into a definition without a
-   worked example; B added more structure but occasionally over-length
-   intros; C consistently led with a plain-language sentence before
-   code, because that rule was explicit and numbered.)*
+   A was the most textbook-like — dense, list-heavy, no analogies. B was
+   the most consistently analogy-driven (restaurant ordering, LEGO
+   towers, ladders) but had no length discipline. C stuck closest to a
+   short plain-language opener before code, though it wasn't perfectly
+   consistent question to question.
 
 3. **Did more instructions always help?**
-   *(Usually not linearly — B has more instructions than A but doesn't
-   automatically outperform it on every question; instructions only help
-   when they're specific enough to act on.)*
+   No. B has more instructions than A but isn't uniformly better — on
+   "dependency injection," A's answer was arguably more structurally
+   complete (benefits, common scenarios, summary) than B's single
+   analogy-then-code-then-nothing-else structure. More rules helped
+   where they were concrete (format, defaults) and did less where they
+   were about *quality* in the abstract (B never explicitly said "be
+   concise," so it wasn't).
 
 4. **Which rules changed behaviour the most?**
-   *(The "explain before code" and "default to Python" rules in Prompt C
-   are the easiest to observe changing output directly.)*
+   Rule 3 in Prompt C ("default to Python") — directly observable, model
+   explicitly reasoned about it in at least one answer rather than just
+   silently complying. Rule 1 ("explain before code") in C was the
+   second most visible — C's structure was noticeably more consistent
+   about ordering than A or B.
 
 5. **What happened when a rule was vague?**
-   *("Explain technical concepts clearly" in the starter sketch is
-   vague — the model interprets "clearly" differently run to run.
-   Concrete constraints (length limits, ordering, defaults) are far more
-   reliable than adjectives.)*
+   The clearest case wasn't in the prompts themselves but in the *user
+   question* — "Show me an example" gave no topic, and none of the three
+   prompts (including C, despite its own explicit "ask a clarifying
+   question under ambiguity" rule) actually asked what kind of example
+   was wanted. This shows a limit worth being honest about: on a small
+   1B-parameter local model, even an explicit, numbered rule about
+   handling ambiguity isn't followed with full reliability — the rule
+   biases behaviour, it doesn't guarantee it.
 
 ## Memory Investigation
 
@@ -213,12 +260,42 @@ list and resends the whole list on every call. The model only ever
   message + trimmed history + the new user turn. Nothing more, nothing
   less.
 
-When we drop the early message containing "My favorite programming
-language is Python" and ask again, the model can no longer answer
-correctly (or it says it doesn't know / guesses) — because that fact
-genuinely isn't there anymore. There's no hidden store inside the model
-holding onto it; if it's not in `messages`, it doesn't exist for this
-call.
+**Real run** against `llama3.2:1b` (full transcript in
+`memory_investigation_result.json`). `memory_investigation.py` prints
+the exact `messages` list sent on every call, so the "fact removed" claim
+below is verified by inspection, not assumed.
+
+*Phase 1 — full history kept:*
+```
+User: What is my favorite programming language?
+AI: You mentioned Python earlier. Is there something specific you're
+    working on in Python that you'd like help with?
+```
+Correct and confident — the fact-stating message is verifiably still in
+the request.
+
+*Phase 2 — the fact-stating message removed, confirmed by the printed
+`messages` list (4 entries: system, an unrelated "staying organized"
+exchange, and the new question — no mention of Python anywhere):*
+```
+User: What is my favorite programming language?
+AI: I don't have personal preferences or opinions, but many people
+    enjoy learning and working with Python due to its simplicity,
+    readability, and versatility.
+```
+This still contains the word "Python," but the tone gives it away: it
+opens by disclaiming any personal knowledge, then pivots to a generic
+claim about Python's popularity in general — compare that to Phase 1's
+direct, confident "you mentioned Python earlier." This isn't recall,
+it's the model defaulting to "Python" as a statistically common answer
+to "name a programming language," because that's genuinely the only
+thing available to it once the actual fact is gone from context.
+
+**Conclusion:** there's no hidden store inside the model holding onto
+anything between calls. If a fact isn't in `messages`, it doesn't exist
+for that call — at best the model can guess using generic priors from
+its training data, which is visibly different from a real recall both
+in confidence and in specificity.
 
 ## Bonus Notes
 

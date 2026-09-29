@@ -21,6 +21,11 @@ import datetime
 import config
 import prompts
 
+# Windows terminals can choke on non-ASCII characters small local models
+# sometimes produce (em-dashes, math symbols, etc). Without this, such a
+# character can crash the whole session mid-chat with UnicodeEncodeError.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 try:
     import ollama
 except ImportError:  # pragma: no cover - guidance for the user, not logic
@@ -128,19 +133,41 @@ def load_conversation(filename: str):
 # Startup helpers
 # ---------------------------------------------------------------------
 
+def get_installed_models() -> list:
+    """
+    Ask Ollama what's actually pulled, instead of trusting a static list
+    that can silently drift out of sync with reality (this is what
+    caused the "model not found (404)" errors during development - the
+    old static list had names like "llama3.2" but the machine only had
+    "llama3.2:1b" pulled).
+    """
+    try:
+        data = ollama.list()
+        return [m["model"] for m in data["models"]]
+    except Exception:
+        return []
+
+
 def choose_model() -> str:
     """Bonus 1: let the user pick an installed Ollama model at startup."""
+    installed = get_installed_models()
+    options = installed if installed else config.AVAILABLE_MODELS
+    if not installed:
+        print("Couldn't query Ollama for installed models - showing the "
+              "fallback list from config.py instead.")
+
     print("Available models:")
-    for i, name in enumerate(config.AVAILABLE_MODELS, start=1):
+    for i, name in enumerate(options, start=1):
         print(f"{i}. {name}")
-    choice = input(f"Select model [1-{len(config.AVAILABLE_MODELS)}] "
-                    f"(Enter for default '{config.DEFAULT_MODEL}'): ").strip()
+    default = options[0] if options else config.DEFAULT_MODEL
+    choice = input(f"Select model [1-{len(options)}] "
+                    f"(Enter for default '{default}'): ").strip()
     if not choice:
-        return config.DEFAULT_MODEL
-    if choice.isdigit() and 1 <= int(choice) <= len(config.AVAILABLE_MODELS):
-        return config.AVAILABLE_MODELS[int(choice) - 1]
-    print(f"Didn't recognise '{choice}', using default '{config.DEFAULT_MODEL}'.")
-    return config.DEFAULT_MODEL
+        return default
+    if choice.isdigit() and 1 <= int(choice) <= len(options):
+        return options[int(choice) - 1]
+    print(f"Didn't recognise '{choice}', using default '{default}'.")
+    return default
 
 
 def choose_personality() -> str:
