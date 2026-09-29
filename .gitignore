@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 conversations/*.json
 experiment_results_*.json
+
+*_result.json
+*.txt
+__pycache__/
